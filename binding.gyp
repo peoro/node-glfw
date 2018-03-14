@@ -1,68 +1,115 @@
 {
-  'variables': {
-    'platform': '<(OS)',
-  },
-  'conditions': [
-    # Replace gyp platform with node platform, blech
-    ['platform == "mac"', {'variables': {
-      'platform': 'darwin',
-    }}],
-    ['platform == "win"', {'variables': {'platform': 'win32'}}],
-  ],
-  'targets': [
-    {
-      'target_name': 'glfw',
-      'defines': [
-        'VERSION=0.4.6',
-      ],
-      'sources': [
-        'src/glfw.cc'
-      ],
-      'include_dirs': [
-        "<!(node -e \"require('nan')\")",
-        './deps/include',
-      ],
-      'conditions': [
-        ['OS=="linux"', {
-          'libraries': [
-            '<!@(pkg-config --libs glfw3 glew)',
-            '-lXrandr','-lXinerama','-lXxf86vm','-lXcursor','-lXi',
-            '-lrt','-lm'
-            ]
-        }],
-        ['OS=="mac"', {
-          'include_dirs': [ '<!@(pkg-config glfw3 glew --cflags-only-I | sed s/-I//g)'],
-          'libraries': [ '<!@(pkg-config --libs glfw3 glew)', '-framework OpenGL'],
-          'library_dirs': ['/usr/local/lib'],
-        }],
-        ['OS=="win"', {
-            'include_dirs': [
-              './deps/include',
-              ],
-            'library_dirs': [
-              './deps/windows/lib/<(target_arch)',
-              ],
-            'libraries': [
-              'FreeImage.lib',
-              'glfw3dll.lib',
-              'glew32.lib',
-              'opengl32.lib'
-              ],
-            'defines' : [
-              'WIN32_LEAN_AND_MEAN',
-              'VC_EXTRALEAN'
-            ],
-            'msvs_settings' : {
-              'VCCLCompilerTool' : {
-                'AdditionalOptions' : ['/O2','/Oy','/GL','/GF','/Gm-','/EHsc','/MT','/GS','/Gy','/GR-','/Gd']
-              },
-              'VCLinkerTool' : {
-                'AdditionalOptions' : ['/OPT:REF','/OPT:ICF','/LTCG']
-              },
-            },
-          },
-        ],
-      ],
-    }
-  ]
+	'variables': {
+		'rm'             : '<!(node -e "require(\'addon-tools-raub\').rm()")',
+		'cp'             : '<!(node -e "require(\'addon-tools-raub\').cp()")',
+		'mkdir'          : '<!(node -e "require(\'addon-tools-raub\').mkdir()")',
+		'opengl_include' : '<!(node -e "require(\'deps-opengl-raub\').include()")',
+		'opengl_bin'     : '<!(node -e "require(\'deps-opengl-raub\').bin()")',
+	},
+	'targets': [
+		{
+			'target_name': 'glfw',
+			'sources': [ 'cpp/glfw.cpp' ],
+			'include_dirs': [
+				'<!@(node -e "require(\'addon-tools-raub\').include()")',
+				'<(opengl_include)',
+			],
+			'library_dirs': [ '<(opengl_bin)' ],
+			'conditions': [
+				[
+					'OS=="linux"',
+					{
+						'libraries': [
+							'-Wl,-rpath,<(opengl_bin)',
+							'<(opengl_bin)/libglfw.so.3',
+							'<(opengl_bin)/libGLEW.so.2.0',
+							'<(opengl_bin)/libGL.so',
+							'<(opengl_bin)/libXrandr.so',
+						],
+					}
+				],
+				[
+					'OS=="mac"',
+					{
+						'libraries': [
+							'-Wl,-rpath,<(opengl_bin)',
+							'<(opengl_bin)/glfw.dylib',
+							'<(opengl_bin)/glew.dylib'
+						],
+					}
+				],
+				[
+					'OS=="win"',
+					{
+						'libraries': [ 'glfw3dll.lib', 'glew32.lib', 'opengl32.lib' ],
+						'defines' : [
+							'WIN32_LEAN_AND_MEAN',
+							'VC_EXTRALEAN'
+						],
+						'msvs_settings' : {
+							'VCCLCompilerTool' : {
+								'AdditionalOptions' : [
+									'/O2','/Oy','/GL','/GF','/Gm-',
+									'/EHsc','/MT','/GS','/Gy','/GR-','/Gd',
+								]
+							},
+							'VCLinkerTool' : {
+								'AdditionalOptions' : ['/OPT:REF','/OPT:ICF','/LTCG']
+							},
+						},
+					},
+				],
+			],
+		},
+		{
+			'target_name'  : 'make_directory',
+			'type'         : 'none',
+			'dependencies' : ['glfw'],
+			'actions'      : [{
+				'action_name' : 'Directory created.',
+				'inputs'      : [],
+				'outputs'     : ['build'],
+				'action': ['<(mkdir)', '-p', 'binary']
+			}],
+		},
+		{
+			'target_name'  : 'copy_binary',
+			'type'         : 'none',
+			'dependencies' : ['make_directory'],
+			'actions'      : [{
+				'action_name' : 'Module copied.',
+				'inputs'      : [],
+				'outputs'     : ['binary'],
+				'action'      : ['<(cp)', 'build/Release/glfw.node', 'binary/glfw.node'],
+			}],
+		},
+		{
+			'target_name'  : 'remove_extras',
+			'type'         : 'none',
+			'dependencies' : ['copy_binary'],
+			'actions'      : [{
+				'action_name' : 'Build intermediates removed.',
+				'inputs'      : [],
+				'outputs'     : ['cpp'],
+				'conditions'  : [
+					[ 'OS=="linux"', { 'action' : [
+						'<(rm)',
+						'<(module_root_dir)/build/Release/obj.target/glfw/cpp/glfw.o',
+						'<(module_root_dir)/build/Release/obj.target/glfw.node',
+						'<(module_root_dir)/build/Release/glfw.node'
+					] } ],
+					[ 'OS=="mac"', { 'action' : [
+						'<(rm)',
+						'<(module_root_dir)/build/Release/obj.target/glfw/cpp/glfw.o',
+						'<(module_root_dir)/build/Release/glfw.node'
+					] } ],
+					[ 'OS=="win"', { 'action' : [
+						'<(rm)',
+						'<(module_root_dir)/build/Release/glfw.*',
+						'<(module_root_dir)/build/Release/obj/glfw/*.*'
+					] } ],
+				],
+			}],
+		},
+	]
 }
